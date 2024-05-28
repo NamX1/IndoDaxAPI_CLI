@@ -9,4 +9,10 @@
 6. Finally, Run The Tool Using: `go run main.go`
 7. You Can Build It Into An Executable Using: `go build main`
 
-### I Will Add Another Commands Soon.
+# I Will Add Another Commands Soon.
+### New Commands:
+- `trades`
+- `depth`
+
+### Change:
+- `cls` -> `clear`
