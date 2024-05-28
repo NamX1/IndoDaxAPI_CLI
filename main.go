@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,23 @@ type Pair struct {
 	Symbol       string `json:"symbol"`
 	BaseCurrency string `json:"base_currency"`
 	Description  string `json:"description"`
+}
+
+type Trade struct {
+	Date   int64  `json:"date,string"`
+	Price  string `json:"price"`
+	Amount string `json:"amount"`
+	Tid    string `json:"tid"`
+	Type   string `json:"type"`
+}
+
+type DepthResponse struct {
+	Buy  [][]interface{} `json:"buy"`
+	Sell [][]interface{} `json:"sell"`
+}
+
+func parseFloat64(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
 }
 
 func processResponse(statusCode int, body []byte) ([]byte, error) {
@@ -71,9 +89,12 @@ func main() {
 		switch user {
 		case "help":
 			fmt.Println(header("[i] Command List"))
-			fmt.Printf("[%s] %s | Clear prompt\n", header("="), "cls")
-			fmt.Printf("[%s] %s | Provide server time on exchange\n", header("="), "stime")
-			fmt.Printf("[%s] %s | Provide available pairs on exchange\n", header("="), "pairs")
+			fmt.Printf("[%s] %s | Clear prompt\n", header("*"), "clear")
+			fmt.Printf("[%s] %s | Provide server time on exchange\n", header("*"), "servertime")
+			fmt.Printf("[%s] %s | Provide available pairs on exchange\n", header("*"), "pairs")
+			fmt.Printf("[%s] %s | Provide ticker information for a pair\n", header("="), "ticker")
+			fmt.Printf("[%s] %s | Provide recent trades for a pair\n", header("="), "trades")
+			fmt.Printf("[%s] %s | Provide order book depth for a pair\n", header("="), "depth")
 
 		case "clear":
 			fmt.Printf("[%s] Clearing prompt.\n", success("+"))
@@ -154,6 +175,75 @@ func main() {
 			fmt.Printf("[%s] Volume in IDR: %s\n", header("-"), tickerData.Ticker.VolIDR)
 			fmt.Printf("[%s] Buy: %s\n", header("-"), tickerData.Ticker.Buy)
 			fmt.Printf("[%s] Sell: %s\n\n", header("-"), tickerData.Ticker.Sell)
+
+		case "trades":
+			fmt.Print("Enter pair symbol (e.g., btcidr): ")
+			pairSymbol, _ := reader.ReadString('\n')
+			pairSymbol = strings.TrimSpace(pairSymbol)
+			statusCode, body, err := fasthttp.Get(nil, baseEndpoint+"/api/trades/"+pairSymbol)
+			if err != nil {
+				fmt.Printf("[%s] Unable to fetch data: %s\n", errorMsg("!"), err)
+				continue
+			}
+			body, err = processResponse(statusCode, body)
+			if err != nil {
+				fmt.Printf("[%s] %s\n", errorMsg("!"), err)
+				continue
+			}
+			var tradesData []Trade
+			err = json.Unmarshal(body, &tradesData)
+			if err != nil {
+				fmt.Printf("[%s] Error parsing trades data: %s\n", errorMsg("!"), err)
+				continue
+			}
+			for _, trade := range tradesData {
+				tradeTime := time.Unix(trade.Date, 0).UTC().Format("2006-01-02 15:04:05")
+				fmt.Printf("[%s] Trade ID: %s\n", success("+"), trade.Tid)
+				fmt.Printf("[%s] Date: %s\n", header("-"), tradeTime)
+				fmt.Printf("[%s] Type: %s\n", header("-"), trade.Type)
+				fmt.Printf("[%s] Price: %s\n", header("-"), trade.Price)
+				fmt.Printf("[%s] Amount: %s\n\n", header("-"), trade.Amount)
+			}
+		case "depth":
+			fmt.Print("Enter pair symbol (e.g., btcidr): ")
+			pairSymbol, _ := reader.ReadString('\n')
+			pairSymbol = strings.TrimSpace(pairSymbol)
+			statusCode, body, err := fasthttp.Get(nil, baseEndpoint+"/api/depth/"+pairSymbol)
+			if err != nil {
+				fmt.Printf("[%s] Unable to fetch data: %s\n", errorMsg("!"), err)
+				continue
+			}
+			body, err = processResponse(statusCode, body)
+			if err != nil {
+				fmt.Printf("[%s] %s\n", errorMsg("!"), err)
+				continue
+			}
+			var depthData DepthResponse
+			err = json.Unmarshal(body, &depthData)
+			if err != nil {
+				fmt.Printf("[%s] Error parsing depth data: %s\n", errorMsg("!"), err)
+				continue
+			}
+			fmt.Println(header("[Buy Orders]"))
+			for _, order := range depthData.Buy {
+				price, err := parseFloat64(order[0].(string))
+				if err != nil {
+					fmt.Printf("[%s] Error parsing price: %s\n", errorMsg("!"), err)
+					continue
+				}
+				amount := order[1].(string)
+				fmt.Printf("[%s] Price: %.2f, Amount: %s\n", success("+"), price, amount)
+			}
+			fmt.Println(header("\n[Sell Orders]"))
+			for _, order := range depthData.Sell {
+				price, err := parseFloat64(order[0].(string))
+				if err != nil {
+					fmt.Printf("[%s] Error parsing price: %s\n", errorMsg("!"), err)
+					continue
+				}
+				amount := order[1].(string)
+				fmt.Printf("[%s] Price: %.2f, Amount: %s\n", success("+"), price, amount)
+			}
 
 		default:
 			fmt.Printf("[%s] Unknown command\n", errorMsg("!"))
